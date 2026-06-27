@@ -1,0 +1,63 @@
+name: Validate Skills
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate SKILL.md structure
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check SKILL.md exists for each skill
+        run: |
+          for skill_dir in skills/*/; do
+            skill_name=$(basename "$skill_dir")
+            if [ ! -f "${skill_dir}SKILL.md" ]; then
+              echo "❌ Missing SKILL.md in ${skill_dir}"
+              exit 1
+            fi
+            echo "✅ ${skill_name}: SKILL.md found"
+          done
+
+      - name: Check SKILL.md has required frontmatter
+        run: |
+          for skill_md in skills/*/SKILL.md; do
+            if ! grep -q "^name:" "$skill_md"; then
+              echo "❌ Missing 'name:' in frontmatter: $skill_md"
+              exit 1
+            fi
+            if ! grep -q "^description:" "$skill_md"; then
+              echo "❌ Missing 'description:' in frontmatter: $skill_md"
+              exit 1
+            fi
+            echo "✅ $(dirname $skill_md): frontmatter valid"
+          done
+
+      - name: Check no credentials in skill files
+        run: |
+          patterns=("eyJ[A-Za-z0-9._-]{20,}" "[0-9]{10}" "access_token\s*=\s*\"[^\"]{20,}\"")
+          found=0
+          for pattern in "${patterns[@]}"; do
+            matches=$(grep -rn --include="*.md" --include="*.py" -E "$pattern" skills/ \
+              | grep -v "YOUR_" | grep -v "placeholder" | grep -v "#" || true)
+            if [ -n "$matches" ]; then
+              echo "⚠️  Possible credential found:"
+              echo "$matches"
+              found=1
+            fi
+          done
+          if [ $found -eq 1 ]; then
+            exit 1
+          fi
+          echo "✅ No credentials detected"
+
+      - name: Summary
+        run: |
+          skill_count=$(ls -d skills/*/ | wc -l)
+          echo "✅ All $skill_count skill(s) validated successfully"

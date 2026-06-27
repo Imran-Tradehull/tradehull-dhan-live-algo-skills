@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Skills — TradeHull</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:   #0a0a0a;
+      --white:   #ffffff;
+      --gray-1:  #111111;
+      --gray-2:  #1a1a1a;
+      --gray-3:  #2a2a2a;
+      --gray-4:  #444444;
+      --gray-5:  #888888;
+      --gray-6:  #cccccc;
+      --accent:  #00d084;
+      --accent-dim: rgba(0, 208, 132, 0.12);
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --radius: 8px;
+    }
+
+    body {
+      background: var(--black);
+      color: var(--gray-6);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── NAV ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 48px;
+      border-bottom: 1px solid var(--gray-3);
+    }
+    .nav-logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--white);
+      text-decoration: none;
+      letter-spacing: -0.3px;
+    }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 32px; }
+    .nav-links a {
+      color: var(--gray-5);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--white); }
+
+    /* ── HERO ── */
+    .hero {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 96px 24px 72px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(0, 208, 132, 0.25);
+      border-radius: 100px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      margin-bottom: 32px;
+      letter-spacing: 0.5px;
+    }
+    .hero-badge::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    h1 {
+      font-size: clamp(36px, 6vw, 56px);
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.15;
+      letter-spacing: -1.5px;
+      margin-bottom: 20px;
+    }
+    h1 span { color: var(--accent); }
+    .hero-sub {
+      font-size: 17px;
+      color: var(--gray-5);
+      max-width: 520px;
+      margin: 0 auto 48px;
+      line-height: 1.7;
+    }
+
+    /* ── INSTALL BLOCK ── */
+    .install-card {
+      background: var(--gray-1);
+      border: 1px solid var(--gray-3);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      text-align: left;
+      max-width: 620px;
+      margin: 0 auto 96px;
+    }
+    .install-label {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--gray-5);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+    .install-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--gray-2);
+      border: 1px solid var(--gray-3);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+    }
+    .install-row:last-child { margin-bottom: 0; }
+    .agent-tag {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      background: var(--accent-dim);
+      border-radius: 4px;
+      padding: 2px 7px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .install-cmd {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--gray-6);
+      flex: 1;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--gray-3);
+      border-radius: 4px;
+      color: var(--gray-5);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── SECTION ── */
+    section {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+    .section-label {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 12px;
+    }
+    h2 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--white);
+      letter-spacing: -0.5px;
+      margin-bottom: 40px;
+    }
+
+    /* ── SKILL CARD ── */
+    .skill-card {
+      background: var(--gray-1);
+      border: 1px solid var(--gray-3);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 24px;
+      transition: border-color 0.2s;
+    }
+    .skill-card:hover { border-color: var(--gray-4); }
+    .skill-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .skill-name {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      color: var(--white);
+      font-weight: 600;
+    }
+    .skill-version {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--gray-5);
+      background: var(--gray-3);
+      border-radius: 4px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .skill-desc {
+      color: var(--gray-5);
+      font-size: 14px;
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    .skill-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--gray-5);
+      background: var(--gray-2);
+      border: 1px solid var(--gray-3);
+      border-radius: 4px;
+      padding: 3px 10px;
+    }
+
+    /* ── WHAT'S INSIDE ── */
+    .file-tree {
+      background: var(--gray-1);
+      border: 1px solid var(--gray-3);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.9;
+    }
+    .tree-dir { color: var(--gray-5); }
+    .tree-file { color: var(--gray-6); }
+    .tree-file .comment { color: var(--gray-4); }
+    .tree-highlight { color: var(--accent); }
+
+    /* ── HOW IT WORKS ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+    }
+    .step-card {
+      background: var(--gray-1);
+      border: 1px solid var(--gray-3);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .step-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .step-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+    .step-desc { font-size: 13px; color: var(--gray-5); line-height: 1.6; }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--gray-3);
+      padding: 32px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .footer-left { font-size: 13px; color: var(--gray-4); }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a {
+      font-size: 13px;
+      color: var(--gray-5);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--white); }
+
+    /* ── DIVIDER ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--gray-3);
+      margin: 0 24px 80px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="https://tradehull.com">Trade<span>Hull</span></a>
+  <div class="nav-links">
+    <a href="https://tradehull.com">Home</a>
+    <a href="https://tradehull.com/courses">Courses</a>
+    <a href="https://github.com/tradehull/tradehull-skills">GitHub</a>
+    <a href="https://pypi.org/project/Dhan-Tradehull/">PyPI</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">Agent Skills · v3.3.1</div>
+  <h1>Code smarter.<br />Trade with <span>AI precision.</span></h1>
+  <p class="hero-sub">
+    Open-source skills that give your AI coding agent deep knowledge of
+    the Dhan-Tradehull Python library — from order placement to live algo templates.
+  </p>
+
+  <div class="install-card">
+    <div class="install-label">Install</div>
+
+    <div class="install-row">
+      <span class="agent-tag">Claude Code</span>
+      <code class="install-cmd">npx skills add tradehull/tradehull-skills --skill dhan-tradehull</code>
+      <button class="copy-btn" onclick="copy(this, 'npx skills add tradehull/tradehull-skills --skill dhan-tradehull')">copy</button>
+    </div>
+
+    <div class="install-row">
+      <span class="agent-tag">Cursor</span>
+      <code class="install-cmd">npx skills add tradehull/tradehull-skills --skill dhan-tradehull --agent cursor</code>
+      <button class="copy-btn" onclick="copy(this, 'npx skills add tradehull/tradehull-skills --skill dhan-tradehull --agent cursor')">copy</button>
+    </div>
+
+    <div class="install-row">
+      <span class="agent-tag">Codex</span>
+      <code class="install-cmd">npx skills add tradehull/tradehull-skills --skill dhan-tradehull --agent codex</code>
+      <button class="copy-btn" onclick="copy(this, 'npx skills add tradehull/tradehull-skills --skill dhan-tradehull --agent codex')">copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- SKILLS -->
+<section>
+  <div class="section-label">Skills</div>
+  <h2>What's available</h2>
+
+  <div class="skill-card">
+    <div class="skill-header">
+      <span class="skill-name">dhan-tradehull</span>
+      <span class="skill-version">v3.3.1</span>
+    </div>
+    <p class="skill-desc">
+      Complete knowledge of the Dhan-Tradehull Python library — method signatures,
+      return types, SEBI rules, real production algo patterns, and TradeHull's
+      exact coding style. Your agent writes code that looks like it came from the TradeHull team.
+    </p>
+    <div class="skill-tags">
+      <span class="tag">Dhan API</span>
+      <span class="tag">options</span>
+      <span class="tag">order placement</span>
+      <span class="tag">ATM/OTM/ITM</span>
+      <span class="tag">option chain</span>
+      <span class="tag">super orders</span>
+      <span class="tag">forever orders</span>
+      <span class="tag">SEBI rules</span>
+      <span class="tag">intraday algo</span>
+      <span class="tag">positional algo</span>
+      <span class="tag">NSE · BSE · MCX</span>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- WHAT'S INSIDE -->
+<section>
+  <div class="section-label">Contents</div>
+  <h2>What's inside the skill</h2>
+
+  <div class="file-tree">
+    <div class="tree-dir">skills/dhan-tradehull/</div>
+    <div class="tree-file">&nbsp;&nbsp;├── <span class="tree-highlight">SKILL.md</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← entry point, quick reference</span></div>
+    <div class="tree-dir">&nbsp;&nbsp;├── references/</div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── <span class="tree-highlight">coding-style.md</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← TradeHull style guide</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── auth.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← login, tokens, auth modes</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── market-data.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← LTP, OHLC, historical</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── options.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← chain, greeks, strikes</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── orders.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← order types, SEBI rules</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── portfolio.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← holdings, positions, P&L</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── utilities.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← lot size, margin, Telegram</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── common-patterns.md &nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← real code patterns</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── algo-intraday-options.md<span class="comment">← intraday algo anatomy</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; ├── algo-positional-spread.md<span class="comment">← positional algo anatomy</span></div>
+    <div class="tree-file">&nbsp;&nbsp;│&nbsp;&nbsp; └── error-log.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">← known errors + regulations</span></div>
+    <div class="tree-dir">&nbsp;&nbsp;└── examples/</div>
+    <div class="tree-file">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── intraday_options_algo.py &nbsp;&nbsp;<span class="comment">← real production algo</span></div>
+    <div class="tree-file">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── positional_spread_algo.py &nbsp;<span class="comment">← real production algo</span></div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- HOW IT WORKS -->
+<section>
+  <div class="section-label">How it works</div>
+  <h2>Skills for AI agents</h2>
+
+  <div class="steps">
+    <div class="step-card">
+      <div class="step-num">01</div>
+      <div class="step-title">Install once</div>
+      <p class="step-desc">One command installs the skill into your agent's context. Works with Claude Code, Cursor, Codex, and any SKILL.md-compatible agent.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">02</div>
+      <div class="step-title">Agent loads on demand</div>
+      <p class="step-desc">The skill uses progressive disclosure — SKILL.md loads first, then specific reference files are loaded only when needed. Keeps context lean.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">03</div>
+      <div class="step-title">Write better code</div>
+      <p class="step-desc">Your agent now knows correct method signatures, return types, SEBI rules, and TradeHull's coding style — without you explaining it every time.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">04</div>
+      <div class="step-title">Stays updated</div>
+      <p class="step-desc">Run <code style="font-family:var(--font-mono);font-size:12px;color:var(--accent)">npx skills update</code> when a new version ships. Skills are versioned — you control when to update.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <span class="footer-left">© 2026 TradeHull · MIT License</span>
+  <div class="footer-links">
+    <a href="https://github.com/tradehull/tradehull-skills">GitHub</a>
+    <a href="https://pypi.org/project/Dhan-Tradehull/">PyPI</a>
+    <a href="https://tradehull.com">tradehull.com</a>
+  </div>
+</footer>
+
+<script>
+  function copy(btn, text) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = 'copied';
+      btn.style.color = 'var(--accent)';
+      btn.style.borderColor = 'var(--accent)';
+      setTimeout(() => {
+        btn.textContent = orig;
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }, 1800);
+    });
+  }
+</script>
+
+</body>
+</html>
