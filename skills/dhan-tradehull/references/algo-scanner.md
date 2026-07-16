@@ -75,6 +75,30 @@ Checking only `rc["ema20"] > rc["ema50"]` flags a *state*, not a *cross* —
 it would fire on every candle while EMA20 stays above. Use the two-candle
 flip to catch the exact crossover bar.
 
+### State vs crossover — pick deliberately
+
+| | Condition | Hits per scan (200 stocks) | Use as |
+|---|---|---|---|
+| **Crossover** | `pc` below → `rc` above | ~0–3 | entry **trigger** |
+| **State** | `rc["ema20"] > rc["ema50"]` | ~80–100 | trend **filter** |
+
+Both are valid — they answer different questions. "Did the trend just flip?"
+(crossover) vs "is it in an uptrend?" (state).
+
+> ⚠️ If you fire orders on **state**, half the universe qualifies at once. A
+> `MAX_ORDERS` cap then fills in **iteration order** (i.e. alphabetically) —
+> 360ONE, ABB, ABCAPITAL — not by setup quality. To trade the *best* N rather
+> than the *first* N, scan everything first, rank (by RSI distance, ADX, volume),
+> then place orders on the top N.
+
+```python
+# rank-then-fire, instead of first-come-first-served
+signals = [r for r in scan_all(place_order=False) if r["signal"] == "BULLISH"]
+best    = sorted(signals, key=lambda r: r["rsi"], reverse=True)[:MAX_ORDERS]
+for r in best:
+    place_signal_order(r)
+```
+
 ---
 
 ## 4. Full watchlist scanner
@@ -191,6 +215,56 @@ for s in signals:
 
 > 🚨 F&O MARKET orders banned from 1 Apr 2026 — always LIMIT. BUY limit
 > must be **above** LTP, SELL limit **below** LTP, for an instant fill.
+> Round the limit price to the symbol's **real tick** — see `error-log.md`
+> ERROR-004 (tick is per-symbol and stored in **paise**).
+
+### Guardrails for auto-firing scanners
+
+A scanner that places orders across 200 stocks needs limits, or one scan can
+try to enter the whole market:
+
+```python
+ORDERS_ENABLED = True      # master switch — False = dry run
+QUANTITY       = 1
+MAX_ORDERS     = 3         # cap per run
+
+orderbook      = {}        # symbol -> order_id ; prevents double entry
+total_orders   = 0
+
+def place_signal_order(row):
+    global total_orders
+    if not ORDERS_ENABLED:
+        return {"placed": False, "note": "dry-run"}
+    if orderbook.get(row["symbol"], {}).get("traded"):
+        return {"placed": False, "note": "already in trade"}      # no re-entry
+    if total_orders >= MAX_ORDERS:
+        return {"placed": False, "note": "max orders reached"}    # hard cap
+    ...
+```
+
+| Guard | Prevents |
+|---|---|
+| `ORDERS_ENABLED` | accidental live trading while developing |
+| `orderbook` dict | re-entering a stock on every re-scan |
+| `MAX_ORDERS` | a state-based signal flooding the account |
+
+> ⚠️ **In-memory state resets on restart.** After a restart the app has
+> forgotten its `orderbook` — it can re-enter a stock it already holds.
+> Reconcile against `tsl.get_positions()` on startup for a long-running algo.
+
+> ⚠️ **Default `place_order=False`.** Any function that can trade will trade
+> when you call it to inspect data. See `error-log.md` ERROR-013.
+
+### Product type & session timing
+
+| Product | Long | Short | Notes |
+|---|---|---|---|
+| `MIS` | ✅ | ✅ | auto square-off ~15:15–15:20; entries stop working after |
+| `CNC` | ✅ | ❌ | delivery — needs full cash, no shorting, held overnight |
+
+A late-session algo (after ~15:20) must use CNC, and is therefore **long-only**
+— skip sell signals rather than letting them reject. See `error-log.md`
+ERROR-011.
 
 ---
 

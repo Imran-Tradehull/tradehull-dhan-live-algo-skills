@@ -154,15 +154,40 @@ single positional indexer is out-of-bounds for SENSEX 06 SEP 77000 PUT
 EXCH:16283: The order price is not multiple of the tick size
 ```
 
-**Cause:** SL/limit price not rounded to instrument's tick size (NIFTY options = 5.0)
+**Cause:** price not rounded to the instrument's tick size. **Two traps:**
+
+1. **`SEM_TICK_SIZE` is in PAISE, not rupees.** `5.0` = ₹0.05, `10.0` = ₹0.10.
+   Divide by 100 before using it as the rounding step.
+2. **Tick varies per symbol.** RELIANCE/TCS = ₹0.10, YESBANK = ₹0.01,
+   NIFTY options = ₹0.05. Hardcoding one value rejects the others.
 
 **Fix:**
 ```python
-df = tsl.instrument_df[tsl.instrument_df['SEM_CUSTOM_SYMBOL'] == option_symbol]
-tick_size     = df.iloc[-1]['SEM_TICK_SIZE']
-price         = round((sl_price - 0.5) / tick_size) * tick_size
-trigger_price = round(sl_price / tick_size) * tick_size
+def get_tick(symbol, exchange="NSE"):
+    """Tick size in RUPEES."""
+    row = tsl.instrument_df[
+        (tsl.instrument_df["SEM_EXM_EXCH_ID"] == exchange)
+        & (tsl.instrument_df["SEM_TRADING_SYMBOL"] == symbol)
+    ]
+    if row.empty:
+        return 0.05
+    return float(row.iloc[-1]["SEM_TICK_SIZE"]) / 100.0    # ⚠️ paise -> rupees
+
+
+def round_tick(price, symbol):
+    tick = get_tick(symbol)
+    return round(round(price / tick) * tick, 2)
+
+# BUY limit 0.2% above LTP, rounded to the symbol's real tick
+price = round_tick(ltp * 1.002, "RELIANCE")     # 1307.2894 -> 1307.30 ✅
 ```
+
+For options, match on `SEM_CUSTOM_SYMBOL` instead of `SEM_TRADING_SYMBOL`.
+
+> ⚠️ **Do NOT use the raw value as the step** — `round(price / 5.0) * 5.0`
+> rounds to the nearest **₹5**. It won't be rejected (₹120.00 is a valid 0.05
+> multiple), so the bug is silent — but a ₹3.40 option becomes **₹5.00**, a
+> 47% price error. Always divide by 100 first.
 
 ---
 
@@ -264,3 +289,85 @@ AttributeError: 'tuple' object has no attribute 'columns'
 atm_strike, option_chain = tsl.get_option_chain(...)   # ✅
 # option_chain = tsl.get_option_chain(...)              # ❌ gets tuple
 ```
+
+---
+
+## ERROR-011 — SELL CNC Rejected (cannot short in delivery)
+
+**Error:** sell order rejected / insufficient holdings, on a stock you don't own.
+
+**Cause:** `trade_type="CNC"` is **delivery** — you can only sell what you
+already hold. Shorting is not possible in CNC.
+
+**Fix:** use `MIS` to short intraday, or skip sell signals when running CNC:
+
+```python
+# CNC cannot short — only act on the long side
+if trade_type == "CNC" and signal != "BULLISH":
+    return {"placed": False, "note": "sell skipped (CNC = no short)"}
+```
+
+| Product | Long | Short | Squares off |
+|---------|------|-------|-------------|
+| `MIS`   | ✅ | ✅ | auto ~15:15–15:20 |
+| `CNC`   | ✅ | ❌ | never — real delivery, needs full cash |
+
+> ⚠️ **MIS entries stop working after ~15:20** (auto square-off window).
+> Late-session algos must switch to CNC — and therefore go long-only.
+
+---
+
+## ERROR-012 — Scanner returns 0 signals (state vs crossover)
+
+**Not an error — a logic misunderstanding.** A *crossover* and a *state* are
+different conditions, and mixing them up causes both "no signals ever" and
+"every stock signals at once".
+
+```python
+# CROSSOVER — the exact candle EMA20 flips above EMA50. Rare, precise entry.
+bull_cross = (pc["ema20"] <= pc["ema50"]) and (rc["ema20"] > rc["ema50"])
+
+# STATE — EMA20 is simply above EMA50. True for ~half the universe, every candle.
+bull_state = rc["ema20"] > rc["ema50"]
+```
+
+| Use | Signals per scan (200 stocks) | Meaning |
+|-----|------|---------|
+| Crossover | ~0–3 | fresh trend flip — an entry trigger |
+| State | ~80–100 | trend alignment — a filter, not a trigger |
+
+**Rule:** a crossover needs **two candles** (`iloc[-2]` and `iloc[-1]`) — the
+state must flip between them. Checking only `rc` gives a state, not a cross.
+
+If using **state** to fire orders, cap the entries — otherwise one scan tries
+to enter half the market. And note a cap fills in **iteration order**
+(alphabetical), not by quality: rank the signals first if you want the *best*
+N rather than the *first* N.
+
+---
+
+## ERROR-013 — Test call places a REAL order
+
+**Cause:** an endpoint/function that auto-fires orders will fire them when you
+call it to "just check the data". Curling a live `/scan_one` in dev = a real
+position on the account.
+
+**Fix:** make dry-run the default and require an explicit opt-in to trade.
+
+```python
+def scan_stock(symbol, place_order=False):     # ✅ safe default
+    ...
+    if place_order and signal in ("BULLISH", "BEARISH"):
+        row["order"] = place_signal_order(row)
+```
+
+```python
+# testing — never fires
+scan_stock("RELIANCE", place_order=False)
+# live path — explicit
+scan_stock("RELIANCE", place_order=True)
+```
+
+Also expose a dry flag on any HTTP route that can trade:
+`/scan_one?symbol=X&dry=1`. A safe default costs nothing; an armed default
+costs real money.

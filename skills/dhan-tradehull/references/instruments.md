@@ -126,10 +126,42 @@ SENSEX      → 20
 
 ## Tick Sizes
 
-| Instrument | Tick Size |
-|-----------|----------|
-| NSE OPTIDX (index options) | 5.0 |
-| NSE EQUITY | 1.0 – 100.0 (varies by stock) |
+> 🚨 **`SEM_TICK_SIZE` is in PAISE, not rupees.** Divide by 100 before using
+> it as a rounding step. `5.0` means **₹0.05**, `10.0` means **₹0.10**.
+> Using the raw value as the step rounds prices to the nearest ₹5 / ₹10.
+
+| `SEM_TICK_SIZE` | Real tick | Seen on |
+|-----|-----|-----|
+| `1.0`   | ₹0.01 | Low-priced NSE equity (e.g. YESBANK) |
+| `5.0`   | ₹0.05 | NSE index options (OPTIDX), some equity |
+| `10.0`  | ₹0.10 | Most large-cap equity (RELIANCE, TCS, HEROMOTOCO) |
+| `20.0`  | ₹0.20 | Some index futures |
+| `50.0`+ | ₹0.50+ | High-priced instruments |
+
+**Tick varies per symbol — never hardcode one.** RELIANCE is ₹0.10 while
+YESBANK is ₹0.01; a price valid for one is rejected for the other.
+
+```python
+def get_tick(symbol, exchange="NSE"):
+    """Tick size in RUPEES for a symbol."""
+    row = tsl.instrument_df[
+        (tsl.instrument_df["SEM_EXM_EXCH_ID"] == exchange)
+        & (tsl.instrument_df["SEM_TRADING_SYMBOL"] == symbol)
+    ]
+    if row.empty:
+        return 0.05
+    return float(row.iloc[-1]["SEM_TICK_SIZE"]) / 100.0     # paise -> rupees
+
+
+def round_tick(price, symbol):
+    tick = get_tick(symbol)
+    return round(round(price / tick) * tick, 2)
+
+round_tick(1307.2894, "RELIANCE")   # -> 1307.30   (tick 0.10)
+round_tick(21.4127,  "YESBANK")     # ->   21.41   (tick 0.01)
+```
+
+See `references/error-log.md` → ERROR-004.
 
 ---
 
@@ -146,6 +178,21 @@ security_id = row.iloc[-1]['SEM_SMST_SECURITY_ID']
 # All NSE equity stocks
 equities = df[(df['SEM_INSTRUMENT_NAME'] == 'EQUITY') &
               (df['SEM_EXM_EXCH_ID'] == 'NSE')]
+
+# The NSE F&O stock universe (~208) — stocks that have a stock future AND
+# trade as real equity. Self-updates when SEBI revises the F&O list.
+fut = df[(df['SEM_EXM_EXCH_ID'] == 'NSE') &
+         (df['SEM_INSTRUMENT_NAME'] == 'FUTSTK')]
+und = set(fut['SEM_TRADING_SYMBOL'].str.split('-').str[0].str.strip())
+
+eq  = df[(df['SEM_EXM_EXCH_ID'] == 'NSE') &
+         (df['SEM_INSTRUMENT_NAME'] == 'EQUITY') &
+         (df['SEM_SERIES'] == 'EQ')]           # ⚠️ 'EQ' series = real tradeable
+eqs = set(eq['SEM_TRADING_SYMBOL'].str.strip())
+
+fno_stocks = sorted(x for x in (und & eqs) if 'TEST' not in x)   # ~208
+# ⚠️ The file contains exchange test symbols (011NSETEST ...) that pass both
+#    filters — strip them, or your scanner wastes calls on fake instruments.
 
 # All NIFTY weekly options (current month)
 nifty_weekly = df[(df['SEM_INSTRUMENT_NAME'] == 'OPTIDX') &
