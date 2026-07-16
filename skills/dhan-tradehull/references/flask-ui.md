@@ -96,6 +96,61 @@ async function runScan() {
 
 ---
 
+## 4b. Progressive scanning — show results one by one
+
+A `/scan` route that loops 200 symbols server-side blocks for minutes, then
+dumps everything at once. The user stares at a spinner and cannot tell whether
+it is working or hung.
+
+**Better: let the browser drive the loop, one symbol per request.** Rows appear
+live, a progress bar moves, and the user sees exactly which stock is being
+scanned.
+
+```python
+# app.py — expose the list and a single-symbol scan
+@app.route("/symbols")
+def symbols():
+    return jsonify({"symbols": watchlist})
+
+@app.route("/scan_one")
+def scan_one():
+    return jsonify(scan_stock(request.args.get("symbol", "")))
+```
+
+```javascript
+let ABORT = false;
+function stopScan() { ABORT = true; }        // wire to a Stop button
+
+async function runScan() {
+  const base = window.location.pathname.replace(/\/?$/, '/');
+  const list = (await (await fetch(base + 'symbols')).json()).symbols;
+
+  for (let i = 0; i < list.length; i++) {
+    if (ABORT) break;                        // stop between symbols
+    const sym = list[i];
+    label.textContent = 'Scanning ' + sym;
+    bar.style.width   = ((i + 1) / list.length * 100) + '%';
+
+    const r = await (await fetch(base + 'scan_one?symbol=' + sym)).json();
+    appendRow(r);                            // render immediately
+  }
+}
+```
+
+**Trade-off:** N requests instead of 1 — slower overall, but far clearer. For
+speed with progress, scan in small parallel batches (e.g. 5 at a time).
+
+> ✅ **The Stop button is also a kill switch.** Because the loop lives in the
+> browser, aborting it means no further `/scan_one` calls — so **no more orders
+> fire**. Any order already sent to the exchange is unaffected; cancel those
+> via the broker (`tsl.cancel_order`) or the Dhan orderbook.
+
+> ⚠️ Sort **after** the scan finishes. Re-sorting on every appended row makes
+> rows jump around mid-scan. Append in scan order, then re-render sorted at the
+> end.
+
+---
+
 ## 5. ⚠️ The reverse-proxy path gotcha (most common bug)
 
 When the app is opened **directly** (`http://server:5001/`), an absolute
@@ -145,23 +200,21 @@ easiest first:
 
 ## 7. Running it as a long-lived process
 
-`python app.py` dies when the terminal closes. To keep it up:
+`python app.py` dies when the terminal closes. Detach it:
 
 ```bash
-# quick + dirty
-nohup python app.py > app.log 2>&1 &
-
-# better: a systemd service, or
-tmux new -s algo 'python app.py'
+setsid /path/to/venv/bin/python app.py > app.log 2>&1 < /dev/null &
 ```
 
-**Port already in use?** Find and free it:
+Restart cleanly by **killing on the port**, never by name:
 ```bash
-ss -ltnp | grep ':5001'      # shows the PID holding the port
-kill -9 <pid>
+kill -9 $(ss -ltnp | grep ':5001' | grep -o 'pid=[0-9]*' | cut -d= -f2)
 ```
-A silent "restart didn't take effect" is almost always an **old process still
-bound to the port** — the new one fails to bind and the old page keeps
-serving. Kill by PID, confirm the port is free, then relaunch.
 
-See also: `references/algo-scanner.md`, `examples/nifty50_scanner_algo.py`.
+> 🐛 If an edit "doesn't take effect" after a restart, an **old process is
+> still bound to the port** and the new one silently failed to start. This is
+> the single most common time-waster — details, plus systemd, logs, multiple
+> algos, and the daily token restart, in **`references/deployment.md`**.
+
+See also: `references/deployment.md`, `references/algo-scanner.md`,
+`examples/nifty50_scanner_algo.py`.
