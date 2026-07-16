@@ -33,6 +33,7 @@ TradeHull's Python wrapper around the Dhan API. Always import and initialize fir
 | **Building an algo end-to-end (auth→data→signal→order→exit)** | `references/algo-dev-workflow.md` |
 | **Scanner: indicators/crossovers over a watchlist (TA-Lib)** | `references/algo-scanner.md` |
 | **Browser dashboard / UI on top of an algo (Flask)** | `references/flask-ui.md` |
+| **Designing the dashboard: layout, colour, progress, live-order safety** | `references/ui-ux.md` |
 | **Running an algo on a server: detach, restart, systemd, logs, ports** | `references/deployment.md` |
 
 ---

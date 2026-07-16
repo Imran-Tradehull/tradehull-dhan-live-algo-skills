@@ -216,5 +216,6 @@ kill -9 $(ss -ltnp | grep ':5001' | grep -o 'pid=[0-9]*' | cut -d= -f2)
 > the single most common time-waster — details, plus systemd, logs, multiple
 > algos, and the daily token restart, in **`references/deployment.md`**.
 
-See also: `references/deployment.md`, `references/algo-scanner.md`,
+See also: `references/ui-ux.md` (how to design the dashboard itself),
+`references/deployment.md`, `references/algo-scanner.md`,
 `examples/nifty50_scanner_algo.py`.
