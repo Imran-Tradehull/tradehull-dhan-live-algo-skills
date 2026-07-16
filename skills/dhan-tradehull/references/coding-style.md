@@ -124,8 +124,20 @@ if entry_orderid is not None:
 
 ## 5. try/except for Order Placement Only
 
+> 🚨 **`try/except` around `order_placement` DOES NOT catch a rejected order.**
+> The library swallows the broker's reply and returns `None`:
+> ```python
+> except Exception as e:
+>     print(f"'Got exception in place_order as {e}")   # <- reason goes to stdout
+>     return None                                      # <- caller gets None
+> ```
+> Your `except` block never fires. `entry_orderid` is silently `None` and the
+> real reason (`DH-906`, the exact rupee shortfall, ...) is printed and lost.
+> **Always check `if not order_id:` — never rely on the exception.**
+> To recover the reason, see §5b.
+
 `try/except` wraps **order placement** blocks specifically — not the whole loop.
-On exception: print error, cancel if needed, `continue` to next symbol.
+It catches *our* errors (bad symbol, lookup failure), not broker rejects.
 
 ```python
 try:
@@ -133,6 +145,10 @@ try:
     orderbook[name]['entry_price']   = tsl.get_ltp_data(names=[ce_name])[ce_name]
 except Exception as e:
     print(f"Error placing entry order: {e}")
+    continue
+
+if not entry_orderid:                    # <- the branch that ACTUALLY fires
+    print("Order rejected — see §5b to get the reason")
     continue
 
 try:
@@ -143,6 +159,112 @@ except Exception as e:
     orderbook[name] = {'traded': "TRADE_NOT_POSSIBLE", 'options_name': None}
     continue
 ```
+
+---
+
+## 5b. Exception Management — log what was SENT and what was RECEIVED
+
+An **OMS reject never reaches the Dhan orderbook** — there is no row to look up
+afterwards. Combined with §5 (the library prints the reason and returns `None`),
+a rejected order leaves you with literally nothing to debug.
+
+> 🚨 **Dhan frequently returns a failure with NO reason — every field `None`:**
+> ```python
+> {'status': 'failure',
+>  'remarks': {'error_code': None, 'error_type': None, 'error_message': None},
+>  'data': ''}
+> ```
+> There is nothing to parse. **Never build error handling that depends on
+> `error_message` existing.** When Dhan says nothing, the ONLY evidence you have
+> is what you sent and what came back — so log both, on every attempt, always.
+> (This shape is usually rate limiting. See `error-log.md` ERROR-016.)
+
+**Rule: capture stdout around the call. Log the exact request and the exact reply
+on EVERY attempt — including when the reason is None.
+Print details ONLY on error — a successful order needs one line, not a dump.**
+
+```python
+import contextlib, io, json, re
+from datetime import datetime
+
+def parse_broker_error(captured):
+    """Pull the reason out of whatever the library printed.
+
+    Dhan OFTEN returns no reason at all — every field None. Never assume a
+    message exists; the request + raw reply is the real debug data.
+    """
+    if not captured:
+        return "no output captured (check request params — see log)"
+
+    msg  = re.search(r"'errorMessage':\s*'([^']+)'", captured)
+    code = re.search(r"'errorCode':\s*'([^']+)'", captured)
+    if msg:
+        return f"{code.group(1)}: {msg.group(1)}" if code else msg.group(1)
+
+    # Dhan gave a failure with EVERY field None:
+    #   {'status':'failure','remarks':{'error_code':None,'error_type':None,
+    #    'error_message':None},'data':''}
+    # There is no reason to extract. This shape is almost always RATE LIMITING.
+    if "'status': 'failure'" in captured or "'error_message': None" in captured:
+        return ("Dhan returned failure with no reason (all fields None) — "
+                "usually RATE LIMIT; see logged request/raw")
+
+    return captured.replace("\n", " ").strip()[:180]   # unknown shape — keep raw
+
+
+def place_and_log(tsl, request, log_path="order_log.jsonl"):
+    """Place an order, returning (order_id, reason). Logs both sides."""
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):              # the ONLY way to see it
+        order_id = tsl.order_placement(**request)
+    captured = buf.getvalue().strip()
+
+    record = {"ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+              "request": request, "raw": captured}
+
+    if order_id:
+        record["ok"] = True
+        record["order_id"] = str(order_id)
+        print(f"FIRED {request['tradingsymbol']} id={order_id}")   # one line
+    else:
+        reason = parse_broker_error(captured) or "rejected (no reason given)"
+        record["ok"]     = False
+        record["reason"] = reason
+        # replay snippet — an OMS reject has no orderbook row, so re-firing the
+        # same params by hand is the ONLY way to reproduce it
+        args = ",\n    ".join(f"{k}={v!r}" for k, v in request.items())
+        record["replay"] = f"tsl.order_placement(\n    {args},\n)"
+
+        print(f"REJECTED {request['tradingsymbol']}: {reason}")     # detail on error
+        print(f"  sent: {request}")
+
+    with open(log_path, "a") as f:
+        f.write(json.dumps(record, default=str) + "\n")
+
+    return (str(order_id) if order_id else None), record.get("reason")
+```
+
+**Why each piece:**
+
+| Piece | Reason |
+|-------|--------|
+| `redirect_stdout` | the broker's reason exists ONLY as a `print` inside the library |
+| log `request` verbatim | an OMS reject has no orderbook row — this is the only record |
+| `replay` snippet | lets you re-fire the exact params by hand to retest |
+| detail **only** on error | a working scan of 200 symbols must not dump 200 payloads |
+| keep raw text on unknown shape | never invent a reason you did not parse |
+
+**Real reasons this surfaces** (all seen in production):
+
+```
+DH-906: You have insufficient funds. Please add Rs.137370.62 to trade.
+RMS:...:Intraday orders cannot be placed at this time.
+RMS:...:You are trying to sell more than the quantity you currently hold.
+EXCH:16283:The order price is not multiple of the tick size.
+```
+
+Without this you see `order rejected`. With it you see the rupee shortfall.
 
 ---
 

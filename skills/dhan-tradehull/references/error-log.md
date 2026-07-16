@@ -51,6 +51,142 @@ order_id   = tsl.order_placement(tradingsymbol, exchange, qty,
 
 ---
 
+## ERROR-014 — order_placement swallows the reject reason (returns None)
+
+**Version:** 3.3.2
+**Symptom:** order silently fails, your `except` never fires, you log "order rejected"
+
+**Root cause** — the library catches the broker's reply and drops it:
+
+```python
+except Exception as e:
+    print(f"'Got exception in place_order as {e}")   # reason -> stdout, then gone
+    return None                                       # caller gets None
+```
+
+Worse: an **OMS reject never reaches the Dhan orderbook**, so there is no row to
+look up afterwards. The reason exists for one instant, as a `print`, then is lost.
+
+**Fix:** capture stdout around the call and log request + reply.
+See `coding-style.md` §5b for the full `place_and_log()` pattern.
+
+```python
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    order_id = tsl.order_placement(**request)
+if not order_id:
+    print(parse_broker_error(buf.getvalue()))   # DH-906: You have insufficient funds...
+```
+
+---
+
+## ERROR-015 — Mixed LTP batch silently drops NIFTY and BANKNIFTY
+
+**Version:** 3.3.2
+**Symptom:** `get_ltp_data` returns every stock but NIFTY/BANKNIFTY are missing —
+no error, no exception, just absent keys. FINNIFTY survives, which hides it.
+
+```python
+tsl.get_ltp_data(names=['NIFTY','BANKNIFTY','FINNIFTY','ACC', ...])
+# -> returns 209 of 211. NIFTY and BANKNIFTY absent. Every batch size.
+tsl.get_ltp_data(names=['NIFTY','BANKNIFTY','FINNIFTY'])
+# -> all 3 fine
+```
+
+**Fix — batch indices separately from equities:**
+
+```python
+indices = [s for s in watchlist if s in ('NIFTY','BANKNIFTY','FINNIFTY')]
+stocks  = [s for s in watchlist if s not in indices]
+for batch in [indices] + [stocks[i:i+100] for i in range(0, len(stocks), 100)]:
+    time.sleep(1)                       # back-to-back batches also get throttled
+    data.update(tsl.get_ltp_data(names=batch) or {})
+```
+
+---
+
+## ERROR-016 — get_option_chain returns None when rate limited
+
+**Version:** 3.3.2
+**Error:** `TypeError: cannot unpack non-iterable NoneType object`
+
+`atm, chain = tsl.get_option_chain(...)` blows up because a throttled call returns
+`None` instead of raising. The traceback names Python, not the rate limit.
+
+**Two traps:**
+1. The chain API allows roughly **1 call / 3 seconds**.
+2. Breaching it often fails the **NEXT** call — usually an unrelated `get_ltp_data`
+   returning `{'status':'failure','data':''}` — so the error surfaces far from its cause.
+
+**Fix — throttle, detect None, retry:**
+
+```python
+CHAIN_DELAY = 3.0
+for attempt in range(2):
+    gap = time.monotonic() - _last_chain
+    if gap < CHAIN_DELAY:
+        time.sleep(CHAIN_DELAY - gap)
+    _last_chain = time.monotonic()
+    result = tsl.get_option_chain(Underlying=sym, exchange=exch, expiry=0, num_strikes=10)
+    if result is not None:
+        return result
+    time.sleep(CHAIN_DELAY)
+raise RuntimeError("chain unavailable (rate limited or no chain)")
+```
+
+⚠️ Budget for it: 200 underlyings x 3s = **~10 minutes** per full scan. That floor is
+the API's, not your code's — no amount of optimisation moves it.
+
+---
+
+## ERROR-017 — Stale process serves old code after an edit
+
+**Symptom:** you fix a bug, the fix is on disk, the app keeps failing identically.
+Reads exactly like a live bug. It is not.
+
+A running Flask app (`debug=False`) holds the imported module in memory and never
+re-reads the file. Seen twice in one day: tick-size rejects blamed on current code
+that were actually from a process started before the fix; and a UI showing bare
+"order rejected" after the error logging was already written.
+
+**Fix — restart, then judge:**
+
+```bash
+kill <pid> && python app.py     # do this BEFORE debugging further
+```
+
+**Diagnostic:** compare process start time against file mtime. If the process is
+older than the fix, you are debugging code that is not running.
+
+```bash
+ps -eo pid,lstart,cmd | grep app.py
+ls -l --time-style=+%H:%M:%S scanner.py
+```
+
+---
+
+## ERROR-018 — Selling an option you do not hold needs full writing margin
+
+**Version:** 3.3.2
+**Error Code:** `DH-906`
+
+```
+'errorMessage': 'You have insufficient funds. Please add Rs.137370.62 to trade.'
+```
+
+A `SELL` on an option with no existing position is **writing**, not exiting — it needs
+~Rs 1.85L margin per NIFTY lot, not the premium. `buy` and `sell` are not symmetrical.
+
+| Intent | Works? |
+|--------|--------|
+| SELL to **exit** a position you hold | ✅ no margin |
+| SELL with **no position** (writing) | ❌ full margin, unlimited-loss tail |
+
+**Prefer buying to express direction:** bullish → BUY CALL, bearish → BUY PUT.
+Risk is capped at the premium and no margin is required.
+
+---
+
 ## ERROR-001 — Invalid or Expired Access Token
 
 **Version:** 3.3.1
