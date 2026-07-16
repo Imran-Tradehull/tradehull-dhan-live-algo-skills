@@ -11,7 +11,7 @@ description: >
   even for simple snippets — to ensure correct method signatures and patterns.
 ---
 
-# Dhan-Tradehull Skill (v3.3.1)
+# Dhan-Tradehull Skill (v3.3.2)
 
 TradeHull's Python wrapper around the Dhan API. Always import and initialize first.
 
@@ -30,6 +30,9 @@ TradeHull's Python wrapper around the Dhan API. Always import and initialize fir
 | Holdings, positions, orderbook, balance, P&L | `references/portfolio.md` |
 | Lot size, margin, Telegram, P&L exit, kill switch | `references/utilities.md` |
 | Errors, SEBI regulations, known issues | `references/error-log.md` |
+| **Building an algo end-to-end (auth→data→signal→order→exit)** | `references/algo-dev-workflow.md` |
+| **Scanner: indicators/crossovers over a watchlist (TA-Lib)** | `references/algo-scanner.md` |
+| **Browser dashboard / UI on top of an algo (Flask)** | `references/flask-ui.md` |
 
 ---
 

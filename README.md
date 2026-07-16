@@ -34,7 +34,7 @@ cp -r tradehull-dhan-live-algo-skills/skills/dhan-tradehull .cursor/skills/
 
 ```bash
 pip install dhanhq==2.2.0
-pip install Dhan-Tradehull==3.3.1
+pip install Dhan-Tradehull==3.3.2
 ```
 
 ---
